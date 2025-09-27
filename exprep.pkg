@@ -1,0 +1,6 @@
+v 1.0
+d exprep 3.7, 27sep2025, Ashiqur Rahman Rony
+d Expands repeat group variables into separate variables or dummies based on indicator variables
+
+f exprep.ado
+f exprep.sthlp

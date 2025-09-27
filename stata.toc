@@ -1,0 +1,4 @@
+d exprep 1.0
+d Expand repeat group variables into separate variables or dummies
+f exprep.ado
+f exprep.sthlp
