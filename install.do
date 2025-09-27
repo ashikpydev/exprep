@@ -6,5 +6,5 @@
 * Contact: ashiqurrahman.stat@gmail.com, https://github.com/ashikpydev/exprep
 
 clear all
-net install exprep, replace from("https://raw.githubusercontent.com/ashikpydev/exprep/main")
-display as result _n "exprep installed successfully. Type 'help exprep' for more details."
+net install exprep, replace from(".")
+display as result "exprep installed successfully. Type 'help exprep' for more details."
