@@ -1,23 +1,23 @@
 *! version 1.0
 *! exprep.ado
-*! Author: Ashiqur Rahman Rony (fixed)
-*! Description: Expand specified variables in a repeat group into separate variables/dummies
+*! Author: Ashiqur Rahman Rony
+*! Description: Expand repeat group section to manual section, presenting in a readable way
 *! Supports numeric, byte, int, and string repeat values with repeat IDs
 
 capture program drop exprep
 program define exprep
     version 17.0
 
-    syntax , ID(string) BASE(string) REPVARS(string) [T(string)]
+    syntax , ID(string) BASE(string) REPVARS(string) [T(string) NOORDER]
 
     * -----------------------------
-    * Determine default variable type
+    * Determine default variable type (unused now, but kept for compatibility)
     * -----------------------------
     local vartype "`t'"
     if "`vartype'" == "" local vartype "int"  // default numeric
 
     * -----------------------------
-    * Collect all ID variables (may be multiple) and repeat value variables
+    * Collect all ID variables and repeat value variables
     * -----------------------------
     unab allid : `id'
     if "`allid'" == "" {
@@ -34,7 +34,7 @@ program define exprep
     di as text "Repeat group variables: `repvars'"
 
     * -----------------------------
-    * Find indicator variables (option list) for base
+    * Find indicator variables for base
     * -----------------------------
     capture ds `base'_*
     if _rc {
@@ -55,20 +55,37 @@ program define exprep
     di as text "Indicator vars: `indvars'"
 
     * -----------------------------
-    * Ensure same number of id and repvars
+    * Check variable limit
     * -----------------------------
     local n_id : word count `allid'
     local n_rep : word count `repvars'
-    if `n_id' != `n_rep' {
-        di as txt "Warning: number of id vars (`n_id') != number of repvars (`n_rep'). Pairing by position; using min(`n_id',`n_rep')."
+    local n_ind : word count `indvars'
+    local n_newvars = `n_rep' * `n_ind'
+    local maxvar = c(maxvar)
+    di as text "Expected new variables: `n_newvars'"
+    di as text "Current Stata variable limit: `maxvar'"
+    if `n_newvars' > (`maxvar' - c(k)) {
+        di as err "Creating `n_newvars' new variables would exceed Stata's limit of `maxvar' (current variables: `c(k)')."
+        di as err "Reduce the number of repvars or use a Stata version with a higher variable limit."
+        exit 1000
     }
-    local nmin = `n_id'
-    if `n_rep' < `nmin' local nmin = `n_rep'
 
     * -----------------------------
-    * Pre-create option variables (one per indicator) with cleaned names & labels
+    * Extract suffixes from idvars
+    * -----------------------------
+    local suffixes ""
+    foreach idvar of local allid {
+        local suffix = regexr("`idvar'", "^.*_", "")
+        local suffixes : list suffixes | suffix  // unique suffixes
+        local id_for_suffix_`suffix' "`idvar'"
+    }
+    di as text "Suffixes found: `suffixes'"
+
+    * -----------------------------
+    * Pre-create option variables with cleaned names & labels, matching types
     * -----------------------------
     local opt_codes ""
+    local newvars ""
     foreach v of local indvars {
         local code = regexr("`v'", "^`base'_","")
         local labname : variable label `v'
@@ -83,92 +100,153 @@ program define exprep
         capture mata: st_local("safeopt", strtoname("`labclean'"))
         if _rc | "`safeopt'" == "" local safeopt "opt`code'"
 
-        * Use repvar stub for variable name
+        * Use repvar stub for variable name, with special handling for splits
         foreach repvar of local repvars {
-            local repstub = regexr("`repvar'", "_[0-9]+$", "")
-            local newvar "`repstub'_`safeopt'"
-            if strlen("`newvar'") > 32 local newvar = substr("`repstub'_`safeopt'",1,28) + "_`code'"
+            local reptype : type `repvar'
+            local temp = regexr("`repvar'", "_[0-9]+$", "")  // remove repeat suffix
+            local optioncode ""
+            if regexm("`temp'", "_[0-9]+$") {
+                local optioncode = regexr("`temp'", "^.*_", "")
+                local repstub = regexr("`temp'", "_[0-9]+$", "")
+            }
+            else {
+                local repstub "`temp'"
+            }
+            local fullstub "`repstub'_`safeopt'"
+            local newvar "`fullstub'"
+            if "`optioncode'" != "" {
+                local newvar "`newvar'_`optioncode'"
+            }
+            local namelen = strlen("`newvar'")
+            if `namelen' > 32 {
+                local codelen = strlen("_`code'")
+                local optlen = cond("`optioncode'"=="", 0, strlen("_`optioncode'"))
+                local trunc = 32 - `codelen' - `optlen'
+                if `trunc' < 1 {
+                    local trunc = 1
+                }
+                local newvar = substr("`fullstub'",1,`trunc') + "_`code'" + cond("`optioncode'"=="","","_`optioncode'")
+            }
 
-            * create variable if not exists
+            * Create variable if not exists, matching type of repvar
             capture confirm variable `newvar'
             if _rc {
-                gen double `newvar' = .
-                * Label format: base_option: repvar label
+                if strpos("`reptype'", "str") {
+                    gen `reptype' `newvar' = ""
+                }
+                else {
+                    gen `reptype' `newvar' = .
+                }
+                * Label format: for byte, copy value label; otherwise, use base_option: repvar label
                 local repvarlabel : variable label `repvar'
                 if "`repvarlabel'" == "" local repvarlabel "`repvar'"
-                label var `newvar' "`labname': `repvarlabel'"
+                if "`reptype'" == "byte" {
+                    local vallabel : value label `repvar'
+                    if "`vallabel'" != "" {
+                        label values `newvar' `vallabel'
+                        label var `newvar' "`repvarlabel'"
+                    }
+                    else {
+                        label var `newvar' "`labname': `repvarlabel'"
+                    }
+                }
+                else {
+                    label var `newvar' "`labname': `repvarlabel'"
+                }
             }
+            * Add to newvars only if not already present
+            local newvars : list newvars | newvar
         }
         local opt_codes "`opt_codes' `code'"
     }
 
     * -----------------------------
-    * Loop over repeat slots and assign values
+    * Fill generated variables with repeat values, grouped by suffix
     * -----------------------------
-    forvalues j = 1/`nmin' {
-        local repvar : word `j' of `repvars'
-        local idvar  : word `j' of `allid'
+    foreach suffix of local suffixes {
+        local idvar "`id_for_suffix_`suffix''"
+        capture confirm numeric variable `idvar'
+        local id_is_numeric = !_rc
 
-        * Skip if not found
-        capture confirm variable `repvar'
-        if _rc continue
-        capture confirm variable `idvar'
-        if _rc continue
-
-        * Determine storage type
-        capture confirm numeric variable `repvar'
-        if !_rc {
-            quietly describe `repvar'
-            local rep_storage = r(type)
+        * Find repvars for this suffix
+        local repvars_this ""
+        foreach repvar of local repvars {
+            local repsuffix = regexr("`repvar'", "^.*_", "")
+            if "`repsuffix'" == "`suffix'" {
+                local repvars_this "`repvars_this' `repvar'"
+            }
         }
-        else local rep_storage = "str"
 
-        * Assign repeat value to matching option variable
-        foreach v of local indvars {
-            local code = regexr("`v'", "^`base'_","")
-            local labname : variable label `v'
-            if "`labname'" == "" local labname "option_`code'"
-
-            local labclean = subinstr("`labname'", " ", "_", .)
-            local labclean = subinstr("`labclean'", "/", "_", .)
-            local labclean = subinstr("`labclean'", "-", "_", .)
-            local labclean = subinstr("`labclean'", ",", "", .)
-            if "`labclean'" == "" local labclean "option_`code'"
-
-            capture mata: st_local("safeopt", strtoname("`labclean'"))
-            if _rc | "`safeopt'" == "" local safeopt "opt`code'"
-
-            local repstub = regexr("`repvar'", "_[0-9]+$", "")
-            local newvar "`repstub'_`safeopt'"
-            if strlen("`newvar'") > 32 local newvar = substr("`repstub'_`safeopt'",1,28) + "_`code'"
-
-            * ensure exists
-            capture confirm variable `newvar'
-            if _rc {
-                if inlist("`rep_storage'", "byte", "int", "long", "float", "double") gen double `newvar' = .
-                else gen strL `newvar' = ""
-                * Label format
-                local repvarlabel : variable label `repvar'
-                if "`repvarlabel'" == "" local repvarlabel "`repvar'"
-                label var `newvar' "`labname': `repvarlabel'"
+        * For each repvar in this group, fill for each code
+        foreach repvar of local repvars_this {
+            local reptype : type `repvar'
+            local temp = regexr("`repvar'", "_[0-9]+$", "")
+            local optioncode ""
+            if regexm("`temp'", "_[0-9]+$") {
+                local optioncode = regexr("`temp'", "^.*_", "")
+                local repstub = regexr("`temp'", "_[0-9]+$", "")
+            }
+            else {
+                local repstub "`temp'"
             }
 
-            * assign values
-            capture confirm numeric variable `idvar'
-            if !_rc {
-                quietly {
-                    tempvar __code_num
-                    gen double `__code_num' = real("`code'")
-                    replace `newvar' = `repvar' if !missing(`repvar') & `idvar' == `__code_num'
-                    drop `__code_num'
+            foreach v of local indvars {
+                local code = regexr("`v'", "^`base'_","")
+                local labname : variable label `v'
+                if "`labname'" == "" local labname "option_`code'"
+
+                local labclean = subinstr("`labname'", " ", "_", .)
+                local labclean = subinstr("`labclean'", "/", "_", .)
+                local labclean = subinstr("`labclean'", "-", "_", .)
+                local labclean = subinstr("`labclean'", ",", "", .)
+                if "`labclean'" == "" local labclean "option_`code'"
+
+                capture mata: st_local("safeopt", strtoname("`labclean'"))
+                if _rc | "`safeopt'" == "" local safeopt "opt`code'"
+
+                local fullstub "`repstub'_`safeopt'"
+                local newvar "`fullstub'"
+                if "`optioncode'" != "" {
+                    local newvar "`newvar'_`optioncode'"
+                }
+                local namelen = strlen("`newvar'")
+                if `namelen' > 32 {
+                    local codelen = strlen("_`code'")
+                    local optlen = cond("`optioncode'"=="", 0, strlen("_`optioncode'"))
+                    local trunc = 32 - `codelen' - `optlen'
+                    if `trunc' < 1 {
+                        local trunc = 1
+                    }
+                    local newvar = substr("`fullstub'",1,`trunc') + "_`code'" + cond("`optioncode'"=="","","_`optioncode'")
+                }
+
+                * Debug message
+                di as txt "Filling `newvar' (type: `: type `newvar'') from `repvar' (type: `reptype') when `idvar' == `code' (id type: `=cond(`id_is_numeric', "numeric", "string")')"
+
+                * Fill values
+                capture {
+                    if `id_is_numeric' {
+                        if strpos("`reptype'", "str") {
+                            quietly replace `newvar' = `repvar' if `idvar' == real("`code'")
+                        }
+                        else {
+                            quietly replace `newvar' = `repvar' if `idvar' == real("`code'") & !missing(`repvar')
+                        }
+                    }
+                    else {
+                        quietly replace `newvar' = `repvar' if `idvar' == "`code'"
+                    }
+                }
+                if _rc {
+                    di as err "Error filling `newvar' from `repvar' for code `code': type mismatch or invalid data"
+                    exit _rc
                 }
             }
-            else replace `newvar' = `repvar' if !missing(`repvar') & trim(`idvar') == "`code'"
         }
     }
 
     * -----------------------------
-    * Collect new variables for display
+    * Collect new variables for display, ensuring uniqueness
     * -----------------------------
     local newvars ""
     foreach v of local indvars {
@@ -183,46 +261,68 @@ program define exprep
         capture mata: st_local("safeopt", strtoname("`labclean'"))
         if _rc | "`safeopt'" == "" local safeopt "opt`code'"
         foreach repvar of local repvars {
-            local repstub = regexr("`repvar'", "_[0-9]+$", "")
-            local newvar "`repstub'_`safeopt'"
-            if strlen("`newvar'") > 32 local newvar = substr("`repstub'_`safeopt'",1,28) + "_`code'"
-            local newvars "`newvars' `newvar'"
+            local temp = regexr("`repvar'", "_[0-9]+$", "")
+            local optioncode ""
+            if regexm("`temp'", "_[0-9]+$") {
+                local optioncode = regexr("`temp'", "^.*_", "")
+                local repstub = regexr("`temp'", "_[0-9]+$", "")
+            }
+            else {
+                local repstub "`temp'"
+            }
+            local fullstub "`repstub'_`safeopt'"
+            local newvar "`fullstub'"
+            if "`optioncode'" != "" {
+                local newvar "`newvar'_`optioncode'"
+            }
+            local namelen = strlen("`newvar'")
+            if `namelen' > 32 {
+                local codelen = strlen("_`code'")
+                local optlen = cond("`optioncode'"=="", 0, strlen("_`optioncode'"))
+                local trunc = 32 - `codelen' - `optlen'
+                if `trunc' < 1 {
+                    local trunc = 1
+                }
+                local newvar = substr("`fullstub'",1,`trunc') + "_`code'" + cond("`optioncode'"=="","","_`optioncode'")
+            }
+            * Add to newvars only if not already present
+            local newvars : list newvars | newvar
         }
     }
 
     di as text "Newly created/filled variables:"
     foreach nv of local newvars {
-        di as text "  `nv' (`: variable label `nv'')"
+        di as text "  nv' (: variable label `nv'')"
     }
 
     * -----------------------------
-    * Order variables after last repvar
+    * Order variables after last repvar (optional)
     * -----------------------------
-    local last_repvar : word `: word count `repvars'' of `repvars'
-    capture confirm variable `last_repvar'
-    if _rc == 0 {
-        order `newvars', after(`last_repvar')
-        di as text "Variables ordered by repvar after `last_repvar'"
+    if "`noorder'" == "" {
+        local last_repvar : word `: word count `repvars'' of `repvars'
+        capture confirm variable `last_repvar'
+        if _rc == 0 {
+            capture order `newvars', after(`last_repvar')
+            if _rc {
+                di as err "Warning: Could not order variables due to too many variables specified. Use NOORDER option to skip ordering."
+            }
+            else {
+                di as text "Variables ordered by repvar after `last_repvar'"
+            }
+        }
     }
 
-	* -----------------------------
-	* Completion message in table style
-	* -----------------------------
-	local uniq_newvars : list uniq newvars
-	local n_new : word count `uniq_newvars'
+    * -----------------------------
+    * Completion message in table style
+    * -----------------------------
+    local uniq_newvars : list uniq newvars
+    local n_new : word count `uniq_newvars'
 
-	* Print top border
-	di as result "+-----------------------------------------------------+"
-	* Print title
-	di as result "|      Expanded your repeat section                   |"
-	* Print middle border
-	di as result "+----------------------+------------------------------+"
-	* Print total new variables
-	di as result "| Total new variables  | `n_new'`"
-	* Print contact info
-	di as result "| For bug/issues contact| ashiqurrahman.stat@gmail.com |"
-	* Print bottom border
-	di as result "+-----------------------------------------------------+"
-
+    di as result "+-----------------------------------------------------+"
+    di as result "|      Expanded your repeat section                   |"
+    di as result "+----------------------+------------------------------+"
+    di as result "| Total new variables  | `n_new'"
+    di as result "| For bug/issues contact| ashiqurrahman.stat@gmail.com |"
+    di as result "+-----------------------------------------------------+"
 
 end
