@@ -1,88 +1,77 @@
-# exprep
+# exprep: Expand SurveyCTO Repeat Group Data to a Readable Format
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Stata](https://img.shields.io/badge/Stata-17.0-blue)](https://www.stata.com)
-
-A Stata package to expand SurveyCTO/ODK repeat group variables into a wide format for efficient data processing.
-
-## Features
-
-- Expands repeat group variables (e.g., integer, `select_one`, `select_multiple`, text) into separate variables or dummies.
-- Supports numeric and string IDs for flexible mapping.
-- Handles large repeat groups (e.g., 27 diseases with 10 questions each) without manual SurveyCTO form edits.
-- Creates clean variable names and labels, preserving data structure.
-- Silently orders new variables after the last repeat variable.
-- Returns the list of new variables in `r(newvars)` for programmatic use.
+[![Stata](https://img.shields.io/badge/Stata-17-blue.svg)](https://www.stata.com/)
+[![Version](https://img.shields.io/badge/version-1.0-green.svg)](https://github.com/ashikpydev/exprep)
 
 ## Description
 
-`exprep` simplifies data processing for SurveyCTO/ODK repeat groups by reshaping them into a wide format. Repeat groups, common in surveys for entities like household members or diseases, generate multiple variables (e.g., `h1a101a_*`, `h1a103oth_*`). Manually defining these in SurveyCTO Excel forms is inefficient (e.g., 270 variables for 27 diseases with 10 questions). `exprep` automates this by mapping repeat group variables to new variables (e.g., `h1a101a_member1`) based on ID and indicator variables (e.g., `h1a101_1`, `h1a101_2`), supporting integer, `select_one`, `select_multiple`, and text variables.
+`exprep` expands SurveyCTO repeat group data into a flatter, more readable format suitable for statistical analysis. SurveyCTO repeat groups store data compactly for collection but can be complex for analysis. This package processes repeat groups without altering original values, ensuring transparency.
 
-## Requirements
-
-- Stata 17.0 or higher.
-- Active internet connection for installation.
-- SurveyCTO/ODK dataset with repeat group variables and matching ID/indicator variables.
+The command identifies repeat indicators from the base variable, creates new variables by appending cleaned option labels to repeat stubs, fills them with corresponding values, and optionally orders them after the original repeats.
 
 ## Installation
 
-Install from GitHub in Stata:
+To install `exprep` from this GitHub repository, run the following command in your Stata command window:
 
 ```stata
 net install exprep, from("https://raw.githubusercontent.com/ashikpydev/exprep/main")
 ```
 
-### Troubleshooting
+For additional help after installation, type `help exprep` in Stata.
 
-If installation fails:
-- Ensure Stata version is 17.0 or higher (`version` command).
-- Verify internet connectivity.
-- Check the repository URL: `https://raw.githubusercontent.com/ashikpydev/exprep/main`.
-- Clear previous installations: `ado uninstall exprep`.
-
-## Usage
+## Syntax
 
 ```stata
-exprep, id(ID_variables) base(base_name) repvars(repeat_variables)
+exprep , id(numeric) base(string) repvars(string/byte/numeric)
 ```
 
-- `id()`: ID variables (e.g., `h1a101_repeat_id_*`).
-- `base()`: Base name for indicator variables (e.g., `h1a101` for `h1a101_1`, `h1a101_2`).
-- `repvars()`: Repeat group variables (e.g., `h1a101a_* h1a103oth_*`)
+### Required Options
+- `id(numeric)`: ID variables identifying repeat instances (e.g., `h1a101_repeat_id_*`).
+- `base(string)`: Base name for indicator variables (e.g., `h1a101`).
+- `repvars(string/byte/numeric)`: Repeat group variables to expand (e.g., `h1a101a_* h1a102_* ...`).
 
-## Example
+## Options
 
-For a dataset with household member repeat groups:
-- ID: `h1a101_repeat_id_*`
-- Indicators: `h1a101_1` to `h1a101_n`
-- Repeat variables: `h1a101a_*` (integer), `h1a101b_*` (select_one), `h1a103_*` (select_multiple), `h1a103oth_*` (text), etc.
+- `id(string)`: Specifies the ID variables that link repeats to options (wildcards allowed, e.g., `h1a101_repeat_id_*`).
+- `base(string)`: Specifies the base name for indicator variables (e.g., `h1a101` for `h1a101_1`, `h1a101_2`, etc.).
+- `repvars(string)`: Lists the repeat variables to expand (wildcards allowed, e.g., `h1a101a_*`).
+
+## Examples
+
+Consider an individual-level survey dataset, section "H1: Acute Illness". The variable `h1a101` allows multiple disease selections over the last 4 weeks. For each disease, questions repeat: `h1a101a` (days suffered), `h1a101b` (currently suffering?), `h1a102` (sought treatment?), `h1a103` (treatment source), `h1a104` (reason for provider), `h1a105a` to `h1a105e` (costs like transport, consultation, etc.).
+
+Syntax example:
 
 ```stata
 exprep, id(h1a101_repeat_id_*) base(h1a101) repvars(h1a101a_* h1a101b_* h1a102_* h1a103_* h1a103oth_* h1a104_* h1a104oth_* h1a105a_* h1a105b_* h1a105c_* h1a105d_* h1a105e_*)
 ```
-Run `help exprep` after installation for details.
 
-## Notes
+How it works:
 
-- Indicator variables must be named `base_[number]` (e.g., `h1a101_1`).
-- Use `t(str)` for text variables (e.g., `h1a103oth_*`) or string IDs.
-- `select_one` and `select_multiple` variables are numeric by default; use `t(str)` for string output.
-- New variables are automatically ordered after the last repeat variable.
-- If ID and repeat variable counts differ, a warning is issued, and pairing uses the minimum count.
-- Results are stored in `r(newvars)` for programmatic use.
+- If the first option in `h1a101` is "Cold/Cough", new variables are generated like: `h1a101a_Cold_cough`, `h1a101b_Cold_cough`, etc. The original variable name precedes the disease descriptor.
+- Labels are updated, e.g., "Cold/Cough: How many days did [line_h1_name] suffer for?". The disease option comes first, followed by the original text.
+- Variables are ordered by disease, grouped after the repeat section ends.
+- Original repeats are retained for transparency; new variables follow, forming disease-specific chunks.
 
-## Contributing
+Outcome:
 
-Contributions are welcome! Please:
-- Submit bug reports or feature requests via [GitHub Issues](https://github.com/ashikpydev/exprep/issues).
-- Follow Stata coding conventions for pull requests.
-- Update documentation (`exprep.sthlp`, `README.md`) for code changes.
+- New variables associating responses with diseases.
+- Clear labels for interpretation.
+- Ordered groups by disease, with originals preserved.
+
+## Author
+
+Ashiqur Rahman Rony  
+Data Analyst, Development Research Initiative (dRi)  
+Email: [ashiqurrahman.stat@gmail.com](mailto:ashiqurrahman.stat@gmail.com)
+
+## Also See
+
+- [reshape](https://www.stata.com/help.cgi?reshape)
+- [wide](https://www.stata.com/help.cgi?wide)
 
 ## License
 
 Licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). See the [LICENSE](LICENSE) file for details.
 
-
-## Contact
-
-For questions or bug reports, contact Ashiqur Rahman Rony at [ashiqurrahman.stat@gmail.com](mailto:ashiqurrahman.stat@gmail.com) or file an issue at [https://github.com/ashikpydev/exprep](https://github.com/ashikpydev/exprep).
+For bugs or issues, contact the author or open an issue on GitHub.
