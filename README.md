@@ -65,11 +65,6 @@ Ashiqur Rahman Rony
 Data Analyst, Development Research Initiative (dRi)  
 Email: [ashiqurrahman.stat@gmail.com](mailto:ashiqurrahman.stat@gmail.com)
 
-## Also See
-
-- [reshape](https://www.stata.com/help.cgi?reshape)
-- [wide](https://www.stata.com/help.cgi?wide)
-
 ## License
 
 Licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). See the [LICENSE](LICENSE) file for details.
