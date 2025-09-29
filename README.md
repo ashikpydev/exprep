@@ -43,13 +43,12 @@ If installation fails:
 ## Usage
 
 ```stata
-exprep, id(ID_variables) base(base_name) repvars(repeat_variables) [t(type)]
+exprep, id(ID_variables) base(base_name) repvars(repeat_variables)
 ```
 
 - `id()`: ID variables (e.g., `h1a101_repeat_id_*`).
 - `base()`: Base name for indicator variables (e.g., `h1a101` for `h1a101_1`, `h1a101_2`).
-- `repvars()`: Repeat group variables (e.g., `h1a101a_* h1a103oth_*`).
-- `t(str)`: Optional; specify for text variables or string IDs (default: numeric).
+- `repvars()`: Repeat group variables (e.g., `h1a101a_* h1a103oth_*`)
 
 ## Example
 
@@ -61,15 +60,6 @@ For a dataset with household member repeat groups:
 ```stata
 exprep, id(h1a101_repeat_id_*) base(h1a101) repvars(h1a101a_* h1a101b_* h1a102_* h1a103_* h1a103oth_* h1a104_* h1a104oth_* h1a105a_* h1a105b_* h1a105c_* h1a105d_* h1a105e_*)
 ```
-
-Output: New variables like `h1a101a_member1`, `h1a103oth_member1`, etc.
-
-For text variables:
-
-```stata
-exprep, id(h1a101_repeat_id_1) base(h1a101) repvars(h1a103oth_1) t(str)
-```
-
 Run `help exprep` after installation for details.
 
 ## Notes
