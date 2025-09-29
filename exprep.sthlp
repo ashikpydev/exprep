@@ -19,19 +19,15 @@
 {title:Syntax}
 
 {p 8 17 2}
-{cmd:exprep} {cmd:,} {opt id(string)} {opt base(string)} {opt repvars(string)} [{opt t(string)} {opt noorder}]
+{cmd:exprep} {cmd:,} {opt id(numeric)} {opt base(string)} {opt repvars(string/byte/numeric)}
 
 {synoptset 20 tabbed}{...}
 {synopthdr}
 {synoptline}
 {syntab:Required}
-{synopt :{opt id(string)}}ID variables identifying repeat instances (e.g., {cmd:h1a101_repeat_id_*}) {p_end}
+{synopt :{opt id(numeric)}}ID variables identifying repeat instances (e.g., {cmd:h1a101_repeat_id_*}) {p_end}
 {synopt :{opt base(string)}}Base name for indicator variables (e.g., {cmd:h1a101}) {p_end}
-{synopt :{opt repvars(string)}}Repeat group variables to expand (e.g., {cmd:h1a101a_* h1a102_* ...}) {p_end}
-
-{syntab:Optional}
-{synopt :{opt t(string)}}Default variable type (default: {cmd:int}; unused but kept for compatibility) {p_end}
-{synopt :{opt noorder}}Skip ordering new variables after the last repeat variable {p_end}
+{synopt :{opt repvars(string/byte/numeric)}}Repeat group variables to expand (e.g., {cmd:h1a101a_* h1a102_* ...}) {p_end}
 {synoptline}
 {p2colreset}{...}
 
@@ -39,7 +35,7 @@
 {title:Description}
 
 {pstd}
-{cmd:exprep} expands SurveyCTO repeat group data into a flatter, more readable format suitable for statistical analysis. SurveyCTO repeat groups store data compactly for collection but can be complex for analysis. This package, developed by the dRi (Development Research Initiative) Data Team, processes repeat groups without altering original values, ensuring transparency.
+{cmd:exprep} expands SurveyCTO repeat group data into a flatter, more readable format suitable for statistical analysis. SurveyCTO repeat groups store data compactly for collection but can be complex for analysis. This package processes repeat groups without altering original values, ensuring transparency.
 
 {pstd}
 The command identifies repeat indicators from the base variable, creates new variables by appending cleaned option labels to repeat stubs, fills them with corresponding values, and optionally orders them after the original repeats.
@@ -55,23 +51,6 @@ The command identifies repeat indicators from the base variable, creates new var
 
 {phang}
 {opt repvars(string)} lists the repeat variables to expand (wildcards allowed, e.g., {cmd:h1a101a_*}).
-
-{phang}
-{opt t(string)} sets the default type for new variables (e.g., {cmd:int}, {cmd:str}; default: {cmd:int}). Currently unused but retained for compatibility.
-
-{phang}
-{opt noorder} prevents reordering new variables after the last repeat variable, useful if ordering fails due to limits.
-
-{marker installation}{...}
-{title:Installation and Use}
-
-{pstd}
-To install {cmd:exprep}, copy and paste the following into your Stata command window:
-
-{p 8 12 2}{cmd:net install exprep, from("https://raw.githubusercontent.com/ashikpydev/exprep/main")}{p_end}
-
-{pstd}
-For additional help, type {cmd:help exprep} in Stata.
 
 {marker examples}{...}
 {title:Examples}
@@ -120,8 +99,3 @@ Ashiqur Rahman Rony{p_end}
 Data Analyst, Development Research Initiative (dRi){p_end}
 {pstd}
 Email: {browse "mailto:ashiqurrahman.stat@gmail.com":ashiqurrahman.stat@gmail.com}{p_end}
-
-{title:Also see}
-
-{psee}
-Online:  {help reshape}, {help order}
